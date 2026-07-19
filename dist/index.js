@@ -6,6 +6,11 @@ var attachmentSchema = z.object({
   /** Base64-encoded content. Total message size is capped by the service (F5, 10MB). */
   content: z.string().min(1)
 });
+var templateRefSchema = z.object({
+  id: z.string().min(1),
+  provider: z.enum(["mailgun", "sendgrid"]).optional(),
+  data: z.record(z.string(), z.unknown()).optional()
+});
 var emailMessageSchema = z.object({
   from: z.string().email(),
   to: z.array(z.string().email()).min(1),
@@ -14,14 +19,44 @@ var emailMessageSchema = z.object({
   subject: z.string().min(1),
   html: z.string().optional(),
   text: z.string().optional(),
+  /** Provider-side template reference — alternative to html/text (F37a). */
+  template: templateRefSchema.optional(),
   headers: z.record(z.string(), z.string()).optional(),
   attachments: z.array(attachmentSchema).optional(),
   /** Optional client-supplied id for idempotency (F7). */
   messageId: z.string().optional()
+}).refine((msg) => msg.html !== void 0 || msg.text !== void 0 || msg.template !== void 0, {
+  message: "Message must have at least one of html, text, or template."
 });
 var ingestResponseSchema = z.object({
   id: z.string()
 });
+
+// src/errors.ts
+var MailcapConfigError = class extends Error {
+  constructor(message) {
+    super(`[mailcap] ${message}`);
+    this.name = "MailcapConfigError";
+  }
+};
+var MailcapRealSendGuardError = class extends Error {
+  constructor() {
+    super(
+      "[mailcap] Refusing to send: NODE_ENV is not 'production' and no MAILCAP_API_KEY is set, so this send would otherwise go out to a REAL recipient from a dev/test machine. Most likely fix: set MAILCAP_API_KEY (+ MAILCAP_URL) to capture instead. If you actually intend to send real email from here, set MAILCAP_ALLOW_REAL_SEND=true \u2014 note this check runs before provider config is validated, so you may see a follow-up error about MAIL_PROVIDER once this guard is satisfied."
+    );
+    this.name = "MailcapRealSendGuardError";
+  }
+};
+var MailcapIngestError = class extends Error {
+  constructor(status, body) {
+    super(`[mailcap] Ingest failed (status ${status ?? "n/a"}): ${body}`);
+    this.status = status;
+    this.body = body;
+    this.name = "MailcapIngestError";
+  }
+  status;
+  body;
+};
 
 // src/adapters/types.ts
 var ProviderDeliveryError = class extends Error {
@@ -50,6 +85,11 @@ function createResendAdapter(apiKey) {
   return {
     name: "resend",
     async deliver(message) {
+      if (message.template && !message.html && !message.text) {
+        throw new MailcapConfigError(
+          "Resend has no provider-side template API \u2014 it has no `template` to deliver via. Render html client-side (e.g. React Email) before sending, or switch MAIL_PROVIDER to mailgun/sendgrid for this message."
+        );
+      }
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -110,10 +150,12 @@ function createSendGridAdapter(apiKey) {
           ],
           from: { email: message.from },
           subject: message.subject,
-          content: [
+          content: message.text || message.html ? [
             message.text ? { type: "text/plain", value: message.text } : null,
             message.html ? { type: "text/html", value: message.html } : null
-          ].filter((c) => c !== null),
+          ].filter((c) => c !== null) : void 0,
+          template_id: message.template?.provider === "sendgrid" ? message.template.id : void 0,
+          dynamic_template_data: message.template?.provider === "sendgrid" ? message.template.data : void 0,
           headers: toHeadersPayload(message),
           attachments: toAttachmentPayload2(message)
         })
@@ -149,6 +191,12 @@ function createMailgunAdapter(config) {
       form.append("subject", message.subject);
       if (message.text) form.append("text", message.text);
       if (message.html) form.append("html", message.html);
+      if (message.template?.provider === "mailgun") {
+        form.append("template", message.template.id);
+        if (message.template.data) {
+          form.append("t:variables", JSON.stringify(message.template.data));
+        }
+      }
       for (const [key, value] of Object.entries(message.headers ?? {})) {
         form.append(`h:${key}`, value);
       }
@@ -174,32 +222,6 @@ function createMailgunAdapter(config) {
     }
   };
 }
-
-// src/errors.ts
-var MailcapConfigError = class extends Error {
-  constructor(message) {
-    super(`[mailcap] ${message}`);
-    this.name = "MailcapConfigError";
-  }
-};
-var MailcapRealSendGuardError = class extends Error {
-  constructor() {
-    super(
-      "[mailcap] Refusing to send: NODE_ENV is not 'production' and no MAILCAP_API_KEY is set, so this send would otherwise go out to a REAL recipient from a dev/test machine. Most likely fix: set MAILCAP_API_KEY (+ MAILCAP_URL) to capture instead. If you actually intend to send real email from here, set MAILCAP_ALLOW_REAL_SEND=true \u2014 note this check runs before provider config is validated, so you may see a follow-up error about MAIL_PROVIDER once this guard is satisfied."
-    );
-    this.name = "MailcapRealSendGuardError";
-  }
-};
-var MailcapIngestError = class extends Error {
-  constructor(status, body) {
-    super(`[mailcap] Ingest failed (status ${status ?? "n/a"}): ${body}`);
-    this.status = status;
-    this.body = body;
-    this.name = "MailcapIngestError";
-  }
-  status;
-  body;
-};
 
 // src/mailer.ts
 function readConfigFromEnv() {
@@ -283,11 +305,14 @@ async function deliverToCapture(message, config) {
   const parsed = ingestResponseSchema.parse(await res.json());
   return { id: parsed.id, mode: "captured" };
 }
-async function deliverToProvider(message, config) {
+function assertRealSendAllowed(config) {
   const nodeEnv = config.nodeEnv ?? "development";
   if (nodeEnv !== "production" && !config.allowRealSend) {
     throw new MailcapRealSendGuardError();
   }
+}
+async function deliverToProvider(message, config) {
+  assertRealSendAllowed(config);
   const adapter = resolveAdapter(config);
   const result = await adapter.deliver(message);
   return { id: result.id, mode: "delivered", provider: config.provider };
@@ -314,6 +339,120 @@ function sendEmail(message) {
 function __resetDefaultMailer() {
   defaultMailer = void 0;
 }
+
+// src/wrap.ts
+function isMailcapCaptureEnabled(overrides = {}) {
+  const config = { ...readConfigFromEnv(), ...overrides };
+  return Boolean(config.captureApiKey);
+}
+async function captureRaw(message, overrides = {}) {
+  const config = { ...readConfigFromEnv(), ...overrides };
+  const validated = emailMessageSchema.parse(message);
+  const result = await deliverToCapture(validated, config);
+  return { id: result.id };
+}
+function normalizeRecipients(value) {
+  if (!value) return [];
+  if (typeof value === "string") return value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(value)) {
+    return value.map((v) => typeof v === "string" ? v : v.email);
+  }
+  return [];
+}
+function mailgunPayloadToMessage(data) {
+  const template = data.template ? {
+    id: String(data.template),
+    provider: "mailgun",
+    data: data["t:variables"] ? JSON.parse(String(data["t:variables"])) : void 0
+  } : void 0;
+  return emailMessageSchema.parse({
+    from: data.from,
+    to: normalizeRecipients(data.to),
+    cc: normalizeRecipients(data.cc),
+    bcc: normalizeRecipients(data.bcc),
+    subject: data.subject,
+    html: data.html,
+    text: data.text,
+    template
+  });
+}
+function wrapMailgunClient(client, overrides = {}) {
+  return {
+    messages: {
+      async create(domain, data) {
+        const config = { ...readConfigFromEnv(), ...overrides };
+        if (config.captureApiKey) {
+          const message = mailgunPayloadToMessage(data);
+          const result = await deliverToCapture(message, config);
+          return { id: result.id, message: "Queued. Thank you." };
+        }
+        assertRealSendAllowed(config);
+        return client.messages.create(domain, data);
+      }
+    }
+  };
+}
+function sendgridPayloadToMessage(msg) {
+  const personalizations = msg.personalizations;
+  const first = personalizations?.[0];
+  const template = msg.templateId ? {
+    id: String(msg.templateId),
+    provider: "sendgrid",
+    data: msg.dynamicTemplateData
+  } : void 0;
+  const from = typeof msg.from === "string" ? msg.from : msg.from?.email;
+  return emailMessageSchema.parse({
+    from,
+    to: normalizeRecipients(first?.to ?? msg.to),
+    cc: normalizeRecipients(first?.cc ?? msg.cc),
+    bcc: normalizeRecipients(first?.bcc ?? msg.bcc),
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+    template
+  });
+}
+function wrapSendGridClient(client, overrides = {}) {
+  return {
+    async send(msg) {
+      const config = { ...readConfigFromEnv(), ...overrides };
+      if (config.captureApiKey) {
+        const message = sendgridPayloadToMessage(msg);
+        const result = await deliverToCapture(message, config);
+        return [{ statusCode: 202, headers: { "x-message-id": result.id } }, {}];
+      }
+      assertRealSendAllowed(config);
+      return client.send(msg);
+    }
+  };
+}
+function resendPayloadToMessage(payload) {
+  return emailMessageSchema.parse({
+    from: payload.from,
+    to: normalizeRecipients(payload.to),
+    cc: normalizeRecipients(payload.cc),
+    bcc: normalizeRecipients(payload.bcc),
+    subject: payload.subject,
+    html: payload.html,
+    text: payload.text
+  });
+}
+function wrapResendClient(client, overrides = {}) {
+  return {
+    emails: {
+      async send(payload) {
+        const config = { ...readConfigFromEnv(), ...overrides };
+        if (config.captureApiKey) {
+          const message = resendPayloadToMessage(payload);
+          const result = await deliverToCapture(message, config);
+          return { data: { id: result.id }, error: null };
+        }
+        assertRealSendAllowed(config);
+        return client.emails.send(payload);
+      }
+    }
+  };
+}
 export {
   MailcapConfigError,
   MailcapIngestError,
@@ -321,11 +460,17 @@ export {
   ProviderDeliveryError,
   __resetDefaultMailer,
   attachmentSchema,
+  captureRaw,
   createMailer,
   createMailgunAdapter,
   createResendAdapter,
   createSendGridAdapter,
   emailMessageSchema,
   ingestResponseSchema,
-  sendEmail
+  isMailcapCaptureEnabled,
+  sendEmail,
+  templateRefSchema,
+  wrapMailgunClient,
+  wrapResendClient,
+  wrapSendGridClient
 };

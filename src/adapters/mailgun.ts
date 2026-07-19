@@ -31,6 +31,12 @@ export function createMailgunAdapter(config: MailgunConfig): ProviderAdapter {
       form.append("subject", message.subject);
       if (message.text) form.append("text", message.text);
       if (message.html) form.append("html", message.html);
+      if (message.template?.provider === "mailgun") {
+        form.append("template", message.template.id);
+        if (message.template.data) {
+          form.append("t:variables", JSON.stringify(message.template.data));
+        }
+      }
       for (const [key, value] of Object.entries(message.headers ?? {})) {
         form.append(`h:${key}`, value);
       }

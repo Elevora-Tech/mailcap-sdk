@@ -180,4 +180,45 @@ describe("createMailer — schema validation", () => {
       mailer.send({ ...baseMessage, to: ["not-an-email"] }),
     ).rejects.toThrow();
   });
+
+  it("F37a: rejects a message with none of html, text, or template", async () => {
+    const mailer = createMailer({
+      captureApiKey: "mc_x",
+      captureUrl: "https://mailcap.example.test",
+    });
+    const { html: _html, ...withoutHtml } = baseMessage;
+    await expect(mailer.send(withoutHtml)).rejects.toThrow(/html, text, or template/);
+  });
+
+  it("F37a: accepts a template-only message (no html/text)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "tpl_1" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const mailer = createMailer({
+      captureApiKey: "mc_x",
+      captureUrl: "https://mailcap.example.test",
+    });
+    const { html: _html, ...withoutHtml } = baseMessage;
+    const result = await mailer.send({
+      ...withoutHtml,
+      template: { id: "welcome", provider: "mailgun", data: { name: "Dave" } },
+    });
+    expect(result).toEqual({ id: "tpl_1", mode: "captured" });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Resend adapter — provider-side templates", () => {
+  it("F37a: throws a clear config error for a template-only send (Resend has no template API)", async () => {
+    const mailer = createMailer({
+      provider: "resend",
+      resendApiKey: "re_x",
+      nodeEnv: "production",
+    });
+    const { html: _html, ...withoutHtml } = baseMessage;
+    await expect(
+      mailer.send({ ...withoutHtml, template: { id: "welcome", provider: "sendgrid" } }),
+    ).rejects.toThrow(MailcapConfigError);
+  });
 });

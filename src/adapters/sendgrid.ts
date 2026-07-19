@@ -35,10 +35,16 @@ export function createSendGridAdapter(apiKey: string): ProviderAdapter {
           ],
           from: { email: message.from },
           subject: message.subject,
-          content: [
-            message.text ? { type: "text/plain", value: message.text } : null,
-            message.html ? { type: "text/html", value: message.html } : null,
-          ].filter((c): c is { type: string; value: string } => c !== null),
+          content:
+            message.text || message.html
+              ? [
+                  message.text ? { type: "text/plain", value: message.text } : null,
+                  message.html ? { type: "text/html", value: message.html } : null,
+                ].filter((c): c is { type: string; value: string } => c !== null)
+              : undefined,
+          template_id: message.template?.provider === "sendgrid" ? message.template.id : undefined,
+          dynamic_template_data:
+            message.template?.provider === "sendgrid" ? message.template.data : undefined,
           headers: toHeadersPayload(message),
           attachments: toAttachmentPayload(message),
         }),

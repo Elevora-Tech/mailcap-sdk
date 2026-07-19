@@ -1,4 +1,5 @@
 import type { EmailMessage } from "../schema.js";
+import { MailcapConfigError } from "../errors.js";
 import { ProviderDeliveryError, type DeliveryResult, type ProviderAdapter } from "./types.js";
 
 function toAttachmentPayload(message: EmailMessage) {
@@ -14,6 +15,14 @@ export function createResendAdapter(apiKey: string): ProviderAdapter {
   return {
     name: "resend",
     async deliver(message: EmailMessage): Promise<DeliveryResult> {
+      if (message.template && !message.html && !message.text) {
+        throw new MailcapConfigError(
+          "Resend has no provider-side template API — it has no `template` to " +
+            "deliver via. Render html client-side (e.g. React Email) before sending, " +
+            "or switch MAIL_PROVIDER to mailgun/sendgrid for this message.",
+        );
+      }
+
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {

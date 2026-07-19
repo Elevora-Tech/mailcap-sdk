@@ -33,7 +33,7 @@ export interface Mailer {
   send(message: EmailMessage): Promise<SendResult>;
 }
 
-function readConfigFromEnv(): MailcapConfig {
+export function readConfigFromEnv(): MailcapConfig {
   const env = typeof process !== "undefined" ? process.env : {};
   return {
     captureApiKey: env.MAILCAP_API_KEY,
@@ -100,7 +100,7 @@ function resolveAdapter(config: MailcapConfig): ProviderAdapter {
   }
 }
 
-async function deliverToCapture(
+export async function deliverToCapture(
   message: EmailMessage,
   config: MailcapConfig,
 ): Promise<SendResult> {
@@ -128,16 +128,24 @@ async function deliverToCapture(
   return { id: parsed.id, mode: "captured" };
 }
 
-async function deliverToProvider(
-  message: EmailMessage,
-  config: MailcapConfig,
-): Promise<SendResult> {
-  // F31: refuse real delivery outside production unless explicitly overridden.
+/**
+ * F31 guard, standalone: refuse real delivery outside production unless
+ * explicitly overridden. Shared by the direct provider path below and by
+ * wrap mode's passthrough path (src/wrap.ts) — the guard must protect every
+ * route to real delivery, not just sendEmail's.
+ */
+export function assertRealSendAllowed(config: MailcapConfig): void {
   const nodeEnv = config.nodeEnv ?? "development";
   if (nodeEnv !== "production" && !config.allowRealSend) {
     throw new MailcapRealSendGuardError();
   }
+}
 
+export async function deliverToProvider(
+  message: EmailMessage,
+  config: MailcapConfig,
+): Promise<SendResult> {
+  assertRealSendAllowed(config);
   const adapter = resolveAdapter(config);
   const result = await adapter.deliver(message);
   return { id: result.id, mode: "delivered", provider: config.provider };

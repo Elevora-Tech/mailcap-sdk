@@ -1,8 +1,17 @@
 export { sendEmail, createMailer, __resetDefaultMailer } from "./mailer.js";
 export type { Mailer, MailcapConfig, MailProvider, SendResult } from "./mailer.js";
 
-export { emailMessageSchema, attachmentSchema, ingestResponseSchema } from "./schema.js";
-export type { EmailMessage, Attachment, IngestResponse } from "./schema.js";
+export { emailMessageSchema, attachmentSchema, ingestResponseSchema, templateRefSchema } from "./schema.js";
+export type { EmailMessage, Attachment, IngestResponse, TemplateRef } from "./schema.js";
+
+export {
+  isMailcapCaptureEnabled,
+  captureRaw,
+  wrapMailgunClient,
+  wrapSendGridClient,
+  wrapResendClient,
+} from "./wrap.js";
+export type { MailgunLikeClient, SendGridLikeClient, ResendLikeClient } from "./wrap.js";
 
 export { MailcapConfigError, MailcapRealSendGuardError, MailcapIngestError } from "./errors.js";
 
