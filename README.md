@@ -31,6 +31,9 @@ RESEND_API_KEY=re_...
 - **Real-send guard.** Outside `NODE_ENV=production`, real provider delivery is
   refused unless you set `MAILCAP_ALLOW_REAL_SEND=true`. A dev machine that
   happens to have a real provider key configured still can't email real people.
+  This guard is checked *before* provider config is validated — so if you see
+  the guard error while genuinely expecting capture, the fix is almost always
+  `MAILCAP_API_KEY` (+ `MAILCAP_URL`), not the override.
 - **Loud misconfiguration.** Missing or contradictory env vars throw
   immediately, naming exactly what's missing — never a silent no-op.
 - **Ingest failures are never silent.** If Mailcap capture fails, `sendEmail`

@@ -14,10 +14,13 @@ export class MailcapConfigError extends Error {
 export class MailcapRealSendGuardError extends Error {
   constructor() {
     super(
-      "[mailcap] Refusing to send real email: NODE_ENV is not 'production' and " +
-        "no MAILCAP_API_KEY is set. This guards against accidentally emailing real " +
-        "people from a dev/test machine. If this send is intentional, set " +
-        "MAILCAP_ALLOW_REAL_SEND=true.",
+      "[mailcap] Refusing to send: NODE_ENV is not 'production' and no MAILCAP_API_KEY " +
+        "is set, so this send would otherwise go out to a REAL recipient from a dev/test " +
+        "machine. Most likely fix: set MAILCAP_API_KEY (+ MAILCAP_URL) to capture instead. " +
+        "If you actually intend to send real email from here, set " +
+        "MAILCAP_ALLOW_REAL_SEND=true — note this check runs before provider config is " +
+        "validated, so you may see a follow-up error about MAIL_PROVIDER once this guard " +
+        "is satisfied.",
     );
     this.name = "MailcapRealSendGuardError";
   }
