@@ -74,6 +74,16 @@ for a given id within an environment:
 await sendEmail({ from, to, subject, html, messageId: "signup-verify-42" });
 ```
 
+## Maintenance note: `dist/` is committed
+
+This package isn't published to npm yet (N7's long-term plan; no npm token
+available in this environment). Consumers install it as a git dependency
+(`github:mat-hiretalk/mailcap-sdk#<commit>`), which is why `dist/` is checked
+into this repo instead of gitignored — a git-sourced install ships repo
+content as-is, and there's no install-time build step gating it. **After any
+change to `src/`, run `pnpm build` and commit the resulting `dist/` alongside
+it**, or consumers pinned to that commit won't see the change.
+
 ## License
 
 MIT
