@@ -1,4 +1,4 @@
-# @mat/mailcap
+# @elevora-tech/mailcap
 
 Zero-branching email SDK. One function, identical in every environment — env
 vars alone decide whether an email is captured by [Mailcap](https://github.com/mat-hiretalk/mailcap)
@@ -6,7 +6,7 @@ for local/dev/staging inspection, or delivered for real via Resend, SendGrid,
 or Mailgun.
 
 ```ts
-import { sendEmail } from "@mat/mailcap";
+import { sendEmail } from "@elevora-tech/mailcap";
 
 await sendEmail({ from, to, subject, html }); // or { text } / { attachments }
 ```
@@ -55,7 +55,7 @@ Switching providers is a config change only — no call-site changes.
 mailer instances, use `createMailer` with explicit overrides:
 
 ```ts
-import { createMailer } from "@mat/mailcap";
+import { createMailer } from "@elevora-tech/mailcap";
 
 const mailer = createMailer({
   captureApiKey: "mc_test",
@@ -75,7 +75,7 @@ existing site stays identical:
 
 ```ts
 import Mailgun from "mailgun.js";
-import { wrapMailgunClient } from "@mat/mailcap";
+import { wrapMailgunClient } from "@elevora-tech/mailcap";
 
 const rawClient = new Mailgun(formData).client({ username: "api", key: apiKey });
 export const mailgun = wrapMailgunClient(rawClient); // <- only this line changes
@@ -95,7 +95,7 @@ routing, real-send guard, and loud misconfiguration errors as `sendEmail`.
 For call shapes that don't fit a wrapper, there's a lower-level manual gate:
 
 ```ts
-import { isMailcapCaptureEnabled, captureRaw } from "@mat/mailcap";
+import { isMailcapCaptureEnabled, captureRaw } from "@elevora-tech/mailcap";
 
 if (isMailcapCaptureEnabled()) {
   await captureRaw({ from, to, subject, html });
@@ -170,7 +170,7 @@ await sendEmail({ from, to, subject, html, messageId: "signup-verify-42" });
 
 This package isn't published to npm yet (N7's long-term plan; no npm token
 available in this environment). Consumers install it as a git dependency
-(`github:mat-hiretalk/mailcap-sdk#<commit>`), which is why `dist/` is checked
+(`github:Elevora-Tech/mailcap-sdk#<commit>`), which is why `dist/` is checked
 into this repo instead of gitignored — a git-sourced install ships repo
 content as-is, and there's no install-time build step gating it. **After any
 change to `src/`, run `pnpm build` and commit the resulting `dist/` alongside
