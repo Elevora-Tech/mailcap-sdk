@@ -1,7 +1,7 @@
 # @elevora-tech/mailcap
 
 Zero-branching email SDK. One function, identical in every environment — env
-vars alone decide whether an email is captured by [Mailcap](https://github.com/mat-hiretalk/mailcap)
+vars alone decide whether an email is captured by [Mailcap](https://mailcap.dev)
 for local/dev/staging inspection, or delivered for real via Resend, SendGrid,
 or Mailgun.
 
@@ -165,6 +165,20 @@ for a given id within an environment:
 ```ts
 await sendEmail({ from, to, subject, html, messageId: "signup-verify-42" });
 ```
+
+## Ask your AI agent to check Mailcap directly
+
+Mailcap exposes an MCP server at `<your-mailcap-url>/api/mcp` (streamable
+HTTP), authenticated with the same per-environment key as `MAILCAP_API_KEY`.
+Point your coding agent's MCP client at it and it can query captured mail
+mid-session — "did the OTP email arrive for test@x.test" — instead of you
+shelling out to curl. Tools: `list_emails`, `get_email`, `get_latest_for`,
+`delete_email`. Read/delete only, scoped to one environment — no admin
+capability beyond what the key already grants over REST.
+
+See `<your-mailcap-url>/llms.txt` for the full integration reference (what an
+AI agent reads when asked to add Mailcap to a repo), and
+`<your-mailcap-url>/install` for a ready-to-paste agent prompt.
 
 ## Install
 
