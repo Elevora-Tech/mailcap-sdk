@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Elevora-Tech/mailcap-sdk"
+    "url": "git+https://github.com/Elevora-Tech/mailcap-sdk.git"
   },
   "homepage": "https://github.com/Elevora-Tech/mailcap-sdk#readme",
   "bugs": "https://github.com/Elevora-Tech/mailcap-sdk/issues",
