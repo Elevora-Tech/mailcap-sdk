@@ -104,6 +104,38 @@ if (isMailcapCaptureEnabled()) {
 }
 ```
 
+## Version compatibility — what happens when Resend/SendGrid/Mailgun update?
+
+`wrapResendClient`, `wrapSendGridClient`, and `wrapMailgunClient` never import
+the vendor SDK. Each takes a **structural type**
+(`ResendLikeClient`/`SendGridLikeClient`/`MailgunLikeClient`) describing only
+the one method call shape Mailcap needs — `client.emails.send(payload)`,
+`client.send(msg)`, `client.messages.create(domain, data)`. There is no
+version of `resend`, `@sendgrid/mail`, or `mailgun.js` pinned anywhere in this
+package, so there's nothing in mailcap-sdk to upgrade in lockstep with those
+vendors.
+
+In practice that means:
+
+- **Internal vendor changes are invisible to Mailcap.** New optional params,
+  auth changes, retry logic, bundling changes — none of it touches the
+  wrapper, because the wrapper never calls into vendor internals, only the one
+  public method it wraps.
+- **The only thing that can break a wrapper** is the vendor changing the
+  *shape* Mailcap depends on: the method name/signature itself, or a payload
+  field name the translator reads (e.g. SendGrid's `personalizations`,
+  `templateId`, `dynamicTemplateData`; Mailgun's `template` / `t:variables`).
+  These are long-stable, publicly documented wire shapes, not implementation
+  details — vendors change them rarely and usually only in a major version.
+- **If that ever does happen**, it fails loudly, not silently:
+  `emailMessageSchema.parse` throws on missing/malformed required fields
+  rather than shipping a half-populated capture. You'd see a validation error
+  pointing at the exact field, not a mysteriously empty inbox entry.
+- **Your existing call sites are unaffected either way** — you're still
+  calling the vendor client the same way; the wrapper just intercepts the one
+  method. Upgrading the vendor package in your own app is a decision you make
+  independently of Mailcap.
+
 ## Provider-side templates
 
 Some providers render from a template stored on their side rather than an
